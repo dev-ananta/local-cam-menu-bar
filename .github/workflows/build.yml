@@ -1,0 +1,101 @@
+name: Build and Package LocalCam
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Build app
+        run: |
+          xcodebuild \
+            -project LocalCam.xcodeproj \
+            -scheme LocalCam \
+            -configuration Release \
+            -destination 'platform=macOS' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Prepare app bundle
+        run: |
+          mkdir -p dist
+          cp -R build/DerivedData/Build/Products/Release/LocalCam.app dist/LocalCam.app
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" dist/LocalCam.app/Contents/Info.plist
+
+      - name: Detect signing secrets
+        id: secrets
+        env:
+          CERTIFICATE_P12: ${{ secrets.SIGNING_CERTIFICATE_P12 }}
+          APPLE_ID: ${{ secrets.NOTARIZATION_APPLE_ID }}
+          APP_PASSWORD: ${{ secrets.NOTARIZATION_PASSWORD }}
+          NOTARY_TEAM_ID: ${{ secrets.NOTARIZATION_TEAM_ID }}
+        run: |
+          if [ -n "$CERTIFICATE_P12" ]; then echo "signing=true" >> "$GITHUB_OUTPUT"; else echo "signing=false" >> "$GITHUB_OUTPUT"; fi
+          if [ -n "$CERTIFICATE_P12" ] && [ -n "$APPLE_ID" ] && [ -n "$APP_PASSWORD" ] && [ -n "$NOTARY_TEAM_ID" ]; then echo "notarization=true" >> "$GITHUB_OUTPUT"; else echo "notarization=false" >> "$GITHUB_OUTPUT"; fi
+
+      # Optional Developer ID signing. Store secrets in GitHub repository settings.
+      - name: Import Developer ID certificate
+        if: steps.secrets.outputs.signing == 'true'
+        env:
+          CERTIFICATE_P12: ${{ secrets.SIGNING_CERTIFICATE_P12 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.SIGNING_CERTIFICATE_PASSWORD }}
+          RUNNER_TEMP_KEYCHAIN_PASSWORD: ${{ runner.temp }}-localcam-keychain
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/localcam-signing.keychain-db"
+          echo "$CERTIFICATE_P12" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+          security create-keychain -p "$RUNNER_TEMP_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$RUNNER_TEMP_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/certificate.p12" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$RUNNER_TEMP_KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          echo "KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+      - name: Code sign app
+        if: steps.secrets.outputs.signing == 'true'
+        run: |
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk -F '"' '/Developer ID Application/ {print $2; exit}')"
+          test -n "$IDENTITY" || { echo "Developer ID Application identity not found"; exit 1; }
+          codesign --force --deep --options runtime --timestamp --sign "$IDENTITY" dist/LocalCam.app
+          codesign --verify --deep --strict --verbose=2 dist/LocalCam.app
+
+      - name: Create compressed DMG
+        run: |
+          hdiutil create -volname "LocalCam" -srcfolder dist/LocalCam.app \
+            -ov -format UDZO dist/LocalCam.dmg
+
+      - name: Notarize and staple DMG
+        if: steps.secrets.outputs.notarization == 'true'
+        env:
+          APPLE_ID: ${{ secrets.NOTARIZATION_APPLE_ID }}
+          APP_SPECIFIC_PASSWORD: ${{ secrets.NOTARIZATION_PASSWORD }}
+          TEAM_ID: ${{ secrets.NOTARIZATION_TEAM_ID }}
+        run: |
+          xcrun notarytool submit dist/LocalCam.dmg \
+            --apple-id "$APPLE_ID" --password "$APP_SPECIFIC_PASSWORD" \
+            --team-id "$TEAM_ID" --wait
+          xcrun stapler staple dist/LocalCam.dmg
+          xcrun stapler validate dist/LocalCam.dmg
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LocalCam-dmg
+          path: dist/LocalCam.dmg
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>PayloadContent</key>
+  <array>
+    <dict>
+      <key>PayloadType</key><string>com.apple.system-extension-policy</string>
+      <key>PayloadVersion</key><integer>1</integer>
+      <key>PayloadIdentifier</key><string>com.example.localcam.system-extension-policy</string>
+      <key>PayloadUUID</key><string>0E1A5DA4-6F20-4F35-99AA-01A24C00CA11</string>
+      <key>PayloadDisplayName</key><string>LocalCam System Extension Policy</string>
+      <key>PayloadEnabled</key><true/>
+      <key>PayloadDescription</key><string>Template system-extension allow-list. LocalCam itself does not install a system extension.</string>
+      <key>AllowedSystemExtensions</key>
+      <dict>
+        <key>REPLACE_WITH_DEVELOPER_TEAM_ID</key>
+        <array><string>REPLACE_WITH_SYSTEM_EXTENSION_BUNDLE_ID</string></array>
+      </dict>
+    </dict>
+  </array>
+  <key>PayloadDisplayName</key><string>LocalCam Enterprise Template</string>
+  <key>PayloadDescription</key><string>Example System Extension policy template. Does not grant Camera or Screen Recording permission.</string>
+  <key>PayloadIdentifier</key><string>com.example.localcam.enterprise-profile</string>
+  <key>PayloadOrganization</key><string>Replace with your organization</string>
+  <key>PayloadType</key><string>Configuration</string>
+  <key>PayloadUUID</key><string>BD3D6D42-AE45-41A2-9E2B-3E234A11B66B</string>
+  <key>PayloadVersion</key><integer>1</integer>
+</dict>
+</plist>

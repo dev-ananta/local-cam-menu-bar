@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key><string>en</string>
+    <key>CFBundleExecutable</key><string>LocalCam</string>
+    <key>CFBundleIdentifier</key><string>com.example.LocalCam</string>
+    <key>CFBundleName</key><string>LocalCam</string>
+    <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleShortVersionString</key><string>1.0.0</string>
+    <key>CFBundleVersion</key><string>1</string>
+    <key>LSMinimumSystemVersion</key><string>13.0</string>
+    <key>LSUIElement</key><true/>
+    <key>NSCameraUsageDescription</key>
+    <string>LocalCam uses your camera to stream live video to a companion device on your local network when you explicitly start streaming.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>LocalCam opens a local-network connection so a paired companion device can receive your webcam stream.</string>
+    <key>NSBonjourServices</key><array><string>_http._tcp</string></array>
+</dict>
+</plist>
