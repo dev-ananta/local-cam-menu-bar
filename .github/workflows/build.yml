@@ -2,7 +2,8 @@ name: Build and Package LocalCam
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -10,15 +11,21 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: macos-14
+
     steps:
       - name: Check out source
         uses: actions/checkout@v4
 
-      - name: Select Xcode
+      - name: Select supported Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Show tool versions
         run: |
-          sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
           xcodebuild -version
+          swift --version
 
       - name: Build app
         run: |
@@ -31,11 +38,19 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build
 
+      - name: Run unit tests
+        run: |
+          swift test --parallel
+
       - name: Prepare app bundle
         run: |
           mkdir -p dist
           cp -R build/DerivedData/Build/Products/Release/LocalCam.app dist/LocalCam.app
           /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" dist/LocalCam.app/Contents/Info.plist
+
+      - name: Create .app zip artifact
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent dist/LocalCam.app dist/LocalCam.app.zip
 
       - name: Detect signing secrets
         id: secrets
@@ -48,7 +63,6 @@ jobs:
           if [ -n "$CERTIFICATE_P12" ]; then echo "signing=true" >> "$GITHUB_OUTPUT"; else echo "signing=false" >> "$GITHUB_OUTPUT"; fi
           if [ -n "$CERTIFICATE_P12" ] && [ -n "$APPLE_ID" ] && [ -n "$APP_PASSWORD" ] && [ -n "$NOTARY_TEAM_ID" ]; then echo "notarization=true" >> "$GITHUB_OUTPUT"; else echo "notarization=false" >> "$GITHUB_OUTPUT"; fi
 
-      # Optional Developer ID signing. Store secrets in GitHub repository settings.
       - name: Import Developer ID certificate
         if: steps.secrets.outputs.signing == 'true'
         env:
@@ -73,6 +87,7 @@ jobs:
           test -n "$IDENTITY" || { echo "Developer ID Application identity not found"; exit 1; }
           codesign --force --deep --options runtime --timestamp --sign "$IDENTITY" dist/LocalCam.app
           codesign --verify --deep --strict --verbose=2 dist/LocalCam.app
+          ditto -c -k --sequesterRsrc --keepParent dist/LocalCam.app dist/LocalCam.app.zip
 
       - name: Create compressed DMG
         run: |
@@ -91,6 +106,14 @@ jobs:
             --team-id "$TEAM_ID" --wait
           xcrun stapler staple dist/LocalCam.dmg
           xcrun stapler validate dist/LocalCam.dmg
+
+      - name: Upload app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LocalCam-app
+          path: dist/LocalCam.app.zip
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4

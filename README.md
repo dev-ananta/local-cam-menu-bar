@@ -1,38 +1,95 @@
-# LocalCam — macOS Menu-Bar Webcam Stream
+# LocalCam — macOS Menu-Bar Webcam Streamer
 
-A minimal SwiftUI/AppKit menu-bar app that captures a webcam with AVFoundation and streams JPEG frames over a local-network WebSocket. It intentionally shows a visible menu-bar status and requires the user to start/stop streaming.
+LocalCam is a native macOS menu-bar application that captures webcam frames with AVFoundation and streams them to Android over a local-network WebSocket.
+
+## What it does
+- Runs as a menu-bar utility (`LSUIElement`) without a normal Dock app icon.
+- Lets you start/stop streaming from the menu bar.
+- Shows:
+  - camera availability
+  - active streaming status
+  - Android client connection count
+  - selected camera
+  - current endpoint (`ws://<LAN-IP>:8765/`)
+  - latest runtime error/disconnection event
+- Supports choosing among detected cameras, preferring external USB webcams by default.
+
+## Protocol contract (compatible with `dev-ananta/webcam-receiver`)
+- Transport: WebSocket over trusted LAN (`ws://`)
+- Port: `8765`
+- Path: `/`
+- Payload: each **binary** WebSocket message is one complete JPEG frame
+- Text messages: optional for status/errors only (Android companion currently ignores text frames)
 
 ## Requirements
 - macOS 13+
 - Xcode 15+
-- For the CI workflow: GitHub-hosted `macos-latest` runner
-- The receiving device must be on a trusted LAN and connect to `ws://<Mac-LAN-IP>:8765/`
+- Trusted LAN shared with the Android device
 
-## Build locally
-1. Open `LocalCam.xcodeproj` in Xcode.
-2. Select the `LocalCam` scheme and a macOS destination.
-3. Build and run. On first use, approve Camera access in System Settings.
-4. Click the camera icon in the menu bar and choose **Start Streaming**.
-5. Find the Mac's LAN IP in System Settings → Network. Connect a WebSocket client to `ws://<IP>:8765/`.
-   Each WebSocket binary message is one JPEG image. This starter sends frames at a limited rate/resolution to reduce bandwidth.
+## Build and run locally
+1. Open `/home/runner/work/local-cam-menu-bar/local-cam-menu-bar/LocalCam.xcodeproj` in Xcode.
+2. Select the `LocalCam` scheme.
+3. Build and run on macOS.
+4. Grant Camera permission when prompted.
+5. Click the menu-bar camera icon and choose **Start Streaming**.
+6. On Android, connect to `ws://<shown-LAN-IP>:8765/`.
 
-This is a starter implementation, not a hardened production streaming service. It has no authentication or TLS. Use only on a trusted network; do not port-forward it. For enterprise use, add pairing/authentication, TLS, client allowlisting, rate limiting, and security review. A companion client is not included.
+## Camera permission behavior
+LocalCam uses standard macOS camera consent flow.
+- If denied, LocalCam shows an actionable error and you must enable access in:
+  - **System Settings → Privacy & Security → Camera**
+- If restricted by policy, LocalCam reports restriction state.
 
-## Camera and MDM privacy limitations
-macOS privacy controls are intentionally enforced by the operating system. **Do not assume an MDM profile can silently pre-approve Camera or Screen Recording for this app.** Apple restricts management of these protected user-consent decisions, and behavior varies by macOS version and payload/service. Validate against Apple's current deployment documentation and your target OS; plan for a user approval flow where required. This app does not capture the screen and does not install a system extension, so neither Screen Recording nor System Extension approval is needed for its current functionality.
+## Using the menu-bar app
+- **Start Streaming / Stop Streaming**: controls capture + WebSocket listener lifecycle.
+- **Refresh Cameras**: re-scan camera devices.
+- **Choose Camera**: pick a specific input camera.
+- **Check Camera Permission**: inspect current permission state.
+- **Quit LocalCam**: cleanly shuts down capture/network.
 
-The included `Deployment/EnterpriseProfile.mobileconfig` is a template for a managed System Extensions policy only. It does not grant camera access or screen-recording access. Replace the example Team ID and bundle ID before deployment and have your MDM administrator validate the payload.
+## Networking and firewall
+- Ensure Mac and Android are on the same trusted Wi-Fi/LAN.
+- Allow inbound TCP 8765 in macOS firewall when prompted.
+- LocalCam reports the currently detected LAN IP, but if unavailable it will still listen on the configured port.
 
-## Signing / notarization
-Set the following GitHub repository secrets:
-- `SIGNING_CERTIFICATE_P12` — base64-encoded Developer ID Application `.p12`
+## Security limitations
+- Connection is unencrypted `ws://` (no TLS).
+- No authentication/pairing is enforced.
+- Use only on trusted private networks.
+- Do not port-forward this service to the public internet.
+
+## CI/CD workflow
+GitHub Actions workflow:
+- runs on pushes and pull requests
+- selects a supported Xcode on macOS runner
+- builds the Xcode project with `xcodebuild`
+- runs unit tests with `swift test`
+- packages:
+  - zipped `.app` artifact (`LocalCam-app`)
+  - `.dmg` artifact (`LocalCam-dmg`)
+
+Unsigned development artifacts are produced when signing secrets are not configured.
+
+## Optional signing/notarization secrets
+- `SIGNING_CERTIFICATE_P12`
 - `SIGNING_CERTIFICATE_PASSWORD`
-- `APPLE_TEAM_ID`
 - `NOTARIZATION_APPLE_ID`
-- `NOTARIZATION_PASSWORD` — app-specific password
+- `NOTARIZATION_PASSWORD`
 - `NOTARIZATION_TEAM_ID`
 
-The workflow signs the app if the certificate secret exists, submits the DMG for notarization when all notarization secrets are set, staples the ticket, then uploads the DMG. Without secrets, it still builds and packages an unsigned artifact for testing; macOS will show trust warnings.
+If present, the workflow signs and validates the app, then notarizes/staples the DMG.
 
-## Build output
-GitHub Actions artifact: `LocalCam-dmg`, containing `LocalCam.dmg`.
+## Troubleshooting
+- **No video on Android**:
+  - confirm LocalCam shows `Streaming: Active`
+  - confirm endpoint IP matches Mac LAN IP
+  - verify Android uses that IP with port `8765`
+  - check both devices are on same subnet/LAN
+- **Connection failed**:
+  - allow inbound connection in firewall
+  - restart streaming in LocalCam
+  - reconnect Android client
+- **Camera unavailable**:
+  - reconnect USB camera
+  - choose another camera from **Choose Camera**
+  - use **Refresh Cameras**
